@@ -2,29 +2,18 @@
 
 
 
-class GOL {
-    constructor(width, height, cellSize, canvaId) {
-        this.width = width;
-        this.height = height;
-        this.alive = [];
-        this.cells = [];
-
-        for(let i = 0; i < height; i++){
-            cells.push(new Array(width).fill(0));
-        }
-
-
-    }
-}   
-
-
 class GOLcanvas {
-    constructor(cellSize, canvaId){
+    constructor(cellSize, width, height, canvasId){
         this.cellSize = cellSize;
-        this.canvas = document.getElementById(canvaId);
+        this.canvas = document.getElementById(canvasId);
+        this.widthPixels = cellSize*width + width + 1;
+        this.heightPixels = cellSize*height + height + 1;
+        this.canvas.width = this.widthPixels;
+        this.canvas.height = this.heightPixels;
         this.ctx = canvas.getContext("2d");
         this.width = canvas.width;
         this.height = canvas.height;
+        this.alive = [];
     }
 
     createGrid() {
@@ -50,35 +39,178 @@ class GOLcanvas {
 
     mousedownHandler(event){
         const coordinates = this.calcCoordinates(event.offsetX, event.offsetY);
-        alive.push(coordinates);
+        this.alive.push(coordinates);
         this.fillCell(coordinates.x, coordinates.y);
     }
 
     mousemoveHandler(event){
         if(event.buttons === 1){
             const coordinates = this.calcCoordinates(event.offsetX, event.offsetY);
-            alive.push(coordinates);
+            this.alive.push(coordinates);
+            this.fillCell(coordinates.x, coordinates.y);
+        } else if (event.buttons === 2) {
+            const coordinates = this.calcCoordinates(event.offsetX, event.offsetY);
+            this.alive.push(coordinates);
+            [{x: 0, y: 1}, {x: 0, y: -1}].forEach((elem) => {
+                const X = coordinates.x + elem.x;
+                const Y = coordinates.y + elem.y;
+                this.alive.push({x: X, y: Y});
+                this.fillCell(X, Y);
+            })
             this.fillCell(coordinates.x, coordinates.y);
         }
     }
 
-    setUpListeners(alive, cells) {
+    fillCellWhite(x, y) {
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.fillRect(x*(this.cellSize + 1) + 1, y*(this.cellSize + 1) + 1, this.cellSize, this.cellSize);
+    }
+
+    gatherInput() {
         this.mousemoveEvent = this.mousemoveHandler.bind(this);
         this.canvas.addEventListener('mousemove', this.mousemoveEvent);
         this.mousedownEvent = this.mousedownHandler.bind(this);
         this.canvas.addEventListener('mousedown', this.mousedownEvent);
     }
 
-    removeListeners() {
+    stopGathering() {
         this.canvas.removeEventListener('mousemove', this.mousemoveEvent);
         this.canvas.removeEventListener('mousedown', this.mousedownEvent);
+        return this.alive;
+    }
+
+    repaint(alive, previouslyAlive) {
+        previouslyAlive.forEach((cell) => {
+            this.fillCellWhite(cell.x, cell.y);
+        })
+
+        alive.forEach((cell) => {
+            this.fillCell(cell.x, cell.y);
+        });
     }
 }
 
-const GOLcanv = new GOLcanvas(5, 'canvas');
-let alive = []
-GOLcanv.createGrid();
-GOLcanv.setUpListeners(alive);
+
+class GOL {
+    constructor(width, height, cellSize, canvasId) {
+        this.width = width;
+        this.height = height;
+        this.alive = [];
+        this.cells = [];
+        this.potentialNewborns = [];
+        this.GOLcanv = new GOLcanvas(cellSize, width, height, canvasId);
+        this.neighbours = [{x: 0, y: 1}, {x: 0, y: -1}, {x: -1, y: 0}, {x: 1, y: 0}, {x: 1, y: -1}, {x: 1, y: 1}, {x: -1, y: 1}, {x: -1, y: -1}];
+        this.GOLcanv.createGrid();
+        for(let i = 0; i < this.height; i++){
+            this.cells.push(new Array(this.width).fill(0));
+        }
+    }
+
+    filterCopies(toFilter) {
+        let filtered = toFilter;
+        filtered = filtered.map((elem) => {
+            return JSON.stringify(elem);
+        })
+        filtered = filtered.filter((elem, index) => {
+            return filtered.indexOf(elem) === index;
+        })
+        filtered = filtered.map((elem) => {
+            return JSON.parse(elem);
+        })
+        return filtered;
+    }
+
+    mapAliveToCells() {
+        this.alive.forEach((elem) => {
+            this.cells[elem.y][elem.x] = 1;
+        })
+    }
+
+    calcNeighbours(cell) {
+        let neighbours = 0;
+        this.neighbours.forEach((neighbour) => {
+            if(-1 < cell.x + neighbour.x && cell.x + neighbour.x < this.width  && -1 < cell.y + neighbour.y && cell.y + neighbour.y < this.height) {
+                neighbours+=this.cells[cell.y + neighbour.y][cell.x + neighbour.x]
+            }
+        })
+        return neighbours;
+    }
+
+    checkPotentailNewborns() {
+        this.potentialNewborns = [];
+        this.alive.forEach((alive) => {
+            this.neighbours.forEach((neighbour) => {
+                if(-1 < alive.x + neighbour.x && alive.x + neighbour.x < this.width && -1 < alive.y + neighbour.y && alive.y + neighbour.y < this.height) {
+                    if(this.cells[alive.y + neighbour.y][alive.x + neighbour.x] === 0) {
+                        this.potentialNewborns.push({x: alive.x + neighbour.x, y: alive.y + neighbour.y})
+                    }
+                }
+            })
+        })
+    }
+    
+
+    gameStep(game) {
+        const dead = [];
+        this.checkPotentailNewborns();
+        let newBorns = this.potentialNewborns.filter((cell) => {
+            return this.calcNeighbours(cell) === 3;
+        });
+
+        const previouslyAlive = this.alive;
+        newBorns = this.filterCopies(newBorns);
+
+        this.alive = this.alive.filter((cell) => {
+            const neighbours = this.calcNeighbours(cell);
+            if(2 <= neighbours && neighbours <= 3){
+                return true;
+            } else {
+                dead.push(cell);
+                return false;
+            }
+        });
+
+        dead.forEach((cell) => {
+            this.cells[cell.y][cell.x] = 0;
+        });
+
+        newBorns.forEach((cell) => {
+            this.cells[cell.y][cell.x] = 1;
+        });
+
+        this.alive = this.alive.concat(newBorns);
+        if(this.alive.length === 0){
+            clearInterval(game);
+        }
+        
+        this.GOLcanv.repaint(this.alive, previouslyAlive);
+    }
+
+    start() {
+
+        const gameFunc = () => {
+            this.gameStep(game);
+        }
+        const game = setInterval(gameFunc, 20);
+    }
+
+    gatherUserInput() {
+        this.GOLcanv.gatherInput([]);
+        document.getElementById('startBtn').addEventListener('click', (event) => {
+            this.alive = this.GOLcanv.stopGathering();
+            this.alive = this.filterCopies(this.alive);
+            this.mapAliveToCells();
+            console.log(this.alive)
+        })
+    }
+
+}   
+
+
+
+
+const game = new GOL(300, 300, 2, 'canvas');
+game.gatherUserInput();
 
 
 
@@ -119,6 +251,3 @@ GOLcanv.setUpListeners(alive);
 
 // canvas.addEventListener('mousedown', fillMouseMove)
 
-document.getElementById('startBtn').addEventListener('click', (event) => {
-    GOLcanv.removeListeners();
-})
