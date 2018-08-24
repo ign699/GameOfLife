@@ -200,6 +200,7 @@ class GOL {
             this.alive = this.GOLcanv.stopGathering();
             this.alive = this.filterCopies(this.alive);
             this.mapAliveToCells();
+            this.start();
             console.log(this.alive)
         })
     }
@@ -209,7 +210,7 @@ class GOL {
 
 
 
-const game = new GOL(300, 300, 2, 'canvas');
+const game = new GOL(50, 50, 2, 'canvas');
 game.gatherUserInput();
 
 
